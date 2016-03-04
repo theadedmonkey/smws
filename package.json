@@ -1,0 +1,20 @@
+{
+  "name": "smws",
+  "version": "1.0.0",
+  "description": "command line utility to download smashing magazine wallpapers",
+  "main": "smws.js",
+  "scripts": {
+    "test": "test"
+  },
+  "keywords": [
+    "smashing-magazine",
+    "wallpapers"
+  ],
+  "author": "theadedmonkey",
+  "license": "ISC",
+  "dependencies": {
+    "cheerio": "^0.20.0",
+    "commander": "^2.9.0",
+    "request": "^2.69.0"
+  }
+}
