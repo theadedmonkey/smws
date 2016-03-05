@@ -1,19 +1,13 @@
 var request = require('request');
 var cheerio = require('cheerio');
 var smws = require('commander');
+var url = require('url');
 
 smws
   .version('0.0.1')
   .option('-y, --year <n>', 'Add year', parseInt)
   .option('-m, --month <n>', 'Add month', parseInt)
   .parse(process.argv);
-
-
-console.log('you want wallpapers:');
-if (smws.year) console.log('  - year');
-if (smws.month) console.log('  - month');
-
-//console.log(smws.year, smws.month);
 
 var monthNames = [
     'january'
@@ -29,27 +23,21 @@ var monthNames = [
   , 'december'
 ];
 
-var date = {
-  year:  smws.year,
-  month: smws.month,
-  yearSmashing: smws.year,
-  monthSmashing: smws.month
-};
-
-function normalizeDate(date) {
+function toDateSmashing(date) {
+  var dateSmashing = {};
   // is january
   if ( date.month === 1 ) {
-    date.yearSmashing  = date.year - 1;
-    date.monthSmashing = 12;
+    dateSmashing.year = date.year - 1;
+    dateSmashing.month = 12;
   }
   // other months
   else {
-    date.monthSmashing = zFill(date.month - 1, 2);
+    dateSmashing.year = date.year
+    dateSmashing.month = zFill(date.month - 1, 2);
   }
-};
-normalizeDate(date)
-console.log(date);
 
+  return dateSmashing;
+}
 
 function zFill(number, length) {
   var numberStr = number.toString();
@@ -58,21 +46,28 @@ function zFill(number, length) {
     : zFill('0'.concat(numberStr), length)
 };
 
-function smashingUrl(date) {
-  return ''.concat(
-      '/'
-    , date.yearSmashing
-    , '/'
-    , date.monthSmashing
-    , '/'
-    , 'desktop-wallpaper-calendars-'
-    , monthNames[date.month - 1]
-    , '-'
-    , date.year
-  )
+//
+
+var date = {
+  year:  smws.year,
+  month: smws.month
 };
 
-console.log(smashingUrl(date))
+var dateSmashing = toDateSmashing(date);
+
+var urlSmashing = url.resolve(
+  'https://www.smashingmagazine.com', [
+      dateSmashing.year
+    , dateSmashing.month
+    , [
+        'desktop-wallpaper-calendars'
+        , monthNames[date.month - 1]
+        , date.year
+      ].join('-')
+  ].join('/')
+);
+
+console.log(urlSmashing);
 
 /*
  * the schema of the smashing magazine url for wallpapers:
@@ -91,17 +86,55 @@ console.log(smashingUrl(date))
  */
 
 
-var smashingUrlFull = 'https://www.smashingmagazine.com' + smashingUrl(date);
-console.log(smashingUrlFull);
-
-
-request(smashingUrlFull, function (error, response, body) {
+request(urlSmashing, function (error, response, body) {
   if (!error && response.statusCode == 200) {
     var $ = cheerio.load(body);
     var $body = $('body');
-    var $titles = $body.find('h3');
-    $titles.each(function(i, elem) {
-      console.log($(this).text())
+
+    // list of all wallpapers
+    var wallpapers = [];
+
+    // list of h3
+    var $titles = $body
+      .find('h3')
+      .filter(function(i, el) {
+        return $(el)
+          .attr('id')
+      })
+      .filter(function(i, el) {
+        return $(el)
+          .prop('id')
+          .indexOf(zFill(date.month, 2) + '-' + date.year) > -1
+      })
+
+
+    $titles.each(function(i, el) {
+
+      var wallpaper = {
+        title: '',
+        resolutions: []
+      };
+
+      wallpaper.title = $(el).text();
+
+      var $resolutions = $(el)
+        .nextAll('ul')
+        .first()
+        .find('li:contains("without calendar")')
+        .find('> a')
+
+      $resolutions.each(function(i, el) {
+        wallpaper.resolutions.push($(el).text())
+      });
+
+      wallpapers.push(wallpaper);
+
+    });
+
+    wallpapers.map(function(wallpaper) {
+      console.log(wallpaper.title);
+      console.log(wallpaper.resolutions);
+      console.log('-------------------');
     });
   }
 })
