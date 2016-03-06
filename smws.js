@@ -5,14 +5,25 @@ var path = require('path');
 var fs = require('fs');
 var url = require('url');
 
-
-var smallX = '\u02E3';
-
-function parseResolution(resolution) {
-  return resolution
-    .split('x')
-    .join(smallX)
-}
+/*
+ * TODO:
+ *
+ * enable multiple months
+ * enable multiple years
+ * enable whole years
+ * enable multiple resolutions
+ * work out the aspect ratio of the resolution
+ * if an entered resolution not exists for a given wallpaper
+ * try to find other resolutions with the same aspect ratio.
+ * add a command line option to choose where to store the wallpapers
+ * save wallpapers in a flat dir with a filename format to be determined
+ * enable the option of with calendar or without or both
+ * try to find the resolution of the user machine in order to set is as default resolution
+ * find out how to make a global smws command
+ * by default the app should download the wallpapers of the last month.
+ * can be a nice idea to have and .smws file to store all the config with
+ * things like the dir.
+ */
 
 smws
   .version('0.0.1')
