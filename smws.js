@@ -6,6 +6,22 @@ var fs = require('fs');
 var url = require('url');
 
 /*
+ * the schema of the smashing magazine url for wallpapers:
+ *
+ * /2015/12/desktop-wallpaper-calendars-january-2016/
+ *
+ * year:  2015
+ * month: 12
+ * name:  desktop-wallpaper-calendars-january-2016
+ *
+ * /2016/01/desktop-wallpaper-calendars-february-2016/
+ *
+ * year:  2016
+ * month: 01
+ * name:  desktop-wallpaper-calendars-february-2016
+ */
+
+/*
  * TODO:
  *
  * enable multiple months
@@ -69,6 +85,18 @@ function zFill(number, length) {
     : zFill('0'.concat(numberStr), length)
 };
 
+function gcd(a, b) {
+  return b === 0
+    ? a
+    : gcd(b, a % b)
+}
+
+function aspectRatio(w, h) {
+  var d = gcd(w, h);
+  return [w / d, h / d].join(':');
+
+}
+
 //
 
 var date = {
@@ -92,30 +120,11 @@ var urlSmashing = url.resolve(
 
 console.log(urlSmashing);
 
-/*
- * the schema of the smashing magazine url for wallpapers:
- *
- * /2015/12/desktop-wallpaper-calendars-january-2016/
- *
- * year:  2015
- * month: 12
- * name:  desktop-wallpaper-calendars-january-2016
- *
- * /2016/01/desktop-wallpaper-calendars-february-2016/
- *
- * year:  2016
- * month: 01
- * name:  desktop-wallpaper-calendars-february-2016
- */
-
 function download(uri, filename, cb) {
   request(uri)
     .pipe(fs.createWriteStream(filename))
     .on('close', cb);
 };
-
-
-
 
 request(urlSmashing, function (error, response, body) {
   if (!error && response.statusCode == 200) {
@@ -139,13 +148,13 @@ request(urlSmashing, function (error, response, body) {
       })
 
 
-    var links = [];
+    var imagesToDownload = [];
 
     $titles.each(function(i, el) {
 
       var wallpaper = {
         title: '',
-        resolutions: []
+        images: []
       };
 
       wallpaper.title = $(el).text();
@@ -156,48 +165,59 @@ request(urlSmashing, function (error, response, body) {
         .find('li:contains("without calendar")')
         .find('> a')
 
-      var link = $resolutions
-         .filter(function(i, el) {
-           return $(el)
-             .attr('title')
-             .indexOf(smws.resolution) > -1
-         })
-
-      links.push(link.attr('href'));
-
-
-      //$links.each(function(i, el) {
-      //  console.log($(el).attr('href'))
-      //})
-
       $resolutions.each(function(i, el) {
-        wallpaper.resolutions.push($(el).text())
+        var resolution = $(el).text();
+        var size = resolution.split(String.fromCharCode(215));
+
+        wallpaper.images.push({
+          resolution:  resolution,
+          width:       size[0],
+          height:      size[1],
+          aspectRatio: aspectRatio(size[0], size[1]),
+          href:        $(el).attr('href')
+        });
       });
 
-      wallpapers.push(wallpaper);
+      // filter by aspect ratio, sort by width and take the first
+      // one ( the image with higher width )
+      var targetSize = smws.resolution.split('x');
+      var targetAspectRatio = aspectRatio(targetSize[0], targetSize[1]);
+      var image = wallpaper.images
+        .filter(function(image) {
+          return image.aspectRatio == targetAspectRatio
+        })
+        .sort(function(a, b) {
+          if ( a.width < b.width ) {
+            return -1;
+          }
+          if ( a.width > b.width ) {
+            return 1;
+          }
+          return 0;
+        })[0]
+
+      if ( image ) {
+        imagesToDownload.push(image);
+      }
 
     });
 
-    // remove all falsy values
-    var newLinks = [];
-    for ( var i = 0; i < links.length; i++ ) {
-      if ( links[i] ) {
-        newLinks.push(links[i])
-      }
-    }
-
-    //console.log(newLinks.length)
-    //newLinks.map(console.log)
-
-    for ( var i = 0; i < newLinks.length; i++ ) {
-      download(newLinks[i], path.join(__dirname, 'wallpapers', i + '.jpg'), function() {
+    for ( var i = 0; i < imagesToDownload.length; i++ ) {
+      download(imagesToDownload[i].href, path.join(__dirname, 'wallpapers', i + '.jpg'), function() {
         console.log('done')
       })
     }
 
     //wallpapers.map(function(wallpaper) {
-    //  console.log(wallpaper.title);
-    //  console.log(wallpaper.resolutions);
+    //  console.log('title: ' + wallpaper.title);
+
+    //  wallpaper.images.map(function(image) {
+    //    console.log('resolution: '   + image.resolution);
+    //    console.log('size: '         + image.width, image.height);
+    //    console.log('aspect ratio: ' + image.aspectRatio);
+    //    console.log('href: '         + image.href);
+    //  });
+
     //  console.log('-------------------');
     //});
 
