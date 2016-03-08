@@ -177,7 +177,19 @@ request(urlSmashing, function (error, response, body) {
       var $resolutionsLists = $resolutionsUl
         .find('li')
         .filter(function(i, el) {
-          return $(el).text().indexOf('without calendar') > -1 || $(el).text().indexOf('with calendar') > -1
+          var calendarText = $(el).text();
+          if ( smws.calendar === undefined ) {
+            return calendarText.indexOf('without calendar') > -1 || calendarText.indexOf('with calendar') > -1
+          }
+
+          if ( smws.calendar === 'yes' ) {
+            return calendarText.indexOf('with calendar') > -1
+          }
+
+          if ( smws.calendar === 'no' ) {
+            return calendarText.indexOf('without calendar') > -1
+          }
+
         })
 
       $resolutionsLists.each(function(i, el) {
