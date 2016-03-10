@@ -98,6 +98,9 @@ function aspectRatio(w, h) {
 
 }
 
+/*
+ * rename to compareByWith
+ */
 function sortByWidth(a, b) {
   if ( a.width < b.width ) {
     return -1;
@@ -135,120 +138,91 @@ var urlSmashing = url.resolve(
   ].join('/')
 );
 
-console.log(urlSmashing);
+/*
+ * Smashing magazine DOM structure:
+ *
+ * wallpaper
+ *   h3      -> wallpaper title
+ *   li      -> wallpaper images link list (cal/nocal)
+ *   > a     -> wallpaper images link item
+ *   a.href  -> wallpaper image
+ */
+
+/*
+ * returns a jquery list with all wallpaper titles.
+ */
+function titles() {
+  return $('body')
+    .find('h3')
+    .filter(function(i, el) {
+      return $(el)
+        .attr('id')
+    })
+    .filter(function(i, el) {
+      return $(el)
+        .prop('id')
+        .indexOf(zFill(date.month, 2) + '-' + date.year) > -1
+    })
+};
+
+function byCalendar(i, el) {
+  var calendarText = $(el).text();
+
+  var hasCalendar    = calendarText.indexOf('with calendar') > -1;
+  var notHasCalendar = calendarText.indexOf('without calendar') > -1;
+
+  switch (smws.calendar) {
+    case 'both':
+      return hasCalendar || notHasCalendar;
+    case 'yes':
+      return hasCalendar;
+    case 'no':
+      return notHasCalendar;
+   }
+}
+
+/*
+ * returns a jquery list of links for a given wallpaper title.
+ */
+function linkList($title) {
+  var links = $title
+    .nextAll('ul')
+    .first()
+    .find('li')
+
+  return links
+    .filter(byCalendar)
+    .find('> a')
+};
+
+/*
+ * maps a jquery list of links to a list of image objects.
+ */
+function linksToImages($links) {
+  return $links.map(function() {
+
+    var resolution = $(this).text();
+    var size       = resolution.split(String.fromCharCode(215));
+
+    return {
+        resolution:  resolution
+      , width:       size[0]
+      , height:      size[1]
+      , aspectRatio: aspectRatio(size[0], size[1])
+      , href:        $(this).prop('href')
+    }
+
+  });
+}
 
 request(urlSmashing, function (error, response, body) {
   if (!error && response.statusCode == 200) {
-    var $ = cheerio.load(body);
-    var $body = $('body');
+    $ = cheerio.load(body);
 
-    // list of all wallpapers
-    var wallpapers = [];
+    var $titles = titles();
+    var $links  = linkList($titles.first());
+    var images  = linksToImages($links);
 
-    // list of h3
-    var $titles = $body
-      .find('h3')
-      .filter(function(i, el) {
-        return $(el)
-          .attr('id')
-      })
-      .filter(function(i, el) {
-        return $(el)
-          .prop('id')
-          .indexOf(zFill(date.month, 2) + '-' + date.year) > -1
-      })
-
-
-    var imagesToDownload = [];
-
-    $titles.each(function(i, el) {
-
-      var wallpaper = {
-        title: '',
-        images: []
-      };
-
-      wallpaper.title = $(el).text();
-
-      var $resolutionsUl = $(el)
-        .nextAll('ul')
-        .first()
-
-      var $resolutionsLists = $resolutionsUl
-        .find('li')
-        .filter(function(i, el) {
-          var calendarText = $(el).text();
-          if ( smws.calendar === undefined ) {
-            return calendarText.indexOf('without calendar') > -1 || calendarText.indexOf('with calendar') > -1
-          }
-
-          if ( smws.calendar === 'yes' ) {
-            return calendarText.indexOf('with calendar') > -1
-          }
-
-          if ( smws.calendar === 'no' ) {
-            return calendarText.indexOf('without calendar') > -1
-          }
-
-        })
-
-      $resolutionsLists.each(function(i, el) {
-        var $resolutions = $(el).find('> a');
-
-        wallpaper.images = [];
-
-        $resolutions.each(function(i, el) {
-          var resolution = $(el).text();
-          var size = resolution.split(String.fromCharCode(215));
-
-          wallpaper.images.push({
-            resolution:  resolution,
-            width:       size[0],
-            height:      size[1],
-            aspectRatio: aspectRatio(size[0], size[1]),
-            href:        $(el).attr('href')
-          });
-
-        });
-
-        // filter by aspect ratio, sort by width and take the first
-        // one ( the image with higher width )
-        var targetSize = smws.resolution.split('x');
-        var targetAspectRatio = aspectRatio(targetSize[0], targetSize[1]);
-        var image = wallpaper.images
-          .filter(function(image) {
-            return image.aspectRatio == targetAspectRatio
-          })
-          .sort(sortByWidth)[0]
-
-        if ( image ) {
-          imagesToDownload.push(image);
-          wallpapers.push(image)
-        }
-
-      });
-
-    });
-
-    for ( var i = 0; i < imagesToDownload.length; i++ ) {
-      download(imagesToDownload[i].href, path.join(__dirname, 'wallpapers', i + '.jpg'), function() {
-        console.log('done')
-      })
-    }
-
-    //wallpapers.map(function(image) {
-      //console.log('title: ' + wallpaper.title);
-
-      //wallpaper.images.map(function(image) {
-        //console.log('resolution: '   + image.resolution);
-        //console.log('size: '         + image.width, image.height);
-        //console.log('aspect ratio: ' + image.aspectRatio);
-        //console.log('href: '         + image.href);
-      //});
-
-      //console.log('-------------------');
-    //});
-
-
+    images.map(console.log);
   }
-})
+});
