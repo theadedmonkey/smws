@@ -1,5 +1,6 @@
 var request = require('request');
 var cheerio = require('cheerio');
+var R = require('ramda');
 var smws = require('commander');
 var path = require('path');
 var fs = require('fs');
@@ -165,6 +166,7 @@ function titles() {
     })
 };
 
+/*
 function byCalendar(i, el) {
   var calendarText = $(el).text();
 
@@ -180,18 +182,23 @@ function byCalendar(i, el) {
       return notHasCalendar;
    }
 }
+*/
 
 /*
  * returns a jquery list of links for a given wallpaper title.
  */
-function linkList($title) {
-  var links = $title
+function wallpaperLinks($title) {
+  return $title
     .nextAll('ul')
     .first()
     .find('li')
-
-  return links
-    .filter(byCalendar)
+    /*
+     * each wallpaper has three li, the first one contains a link
+     * with the wallpaper preview, so it is skipped.
+     */
+    .not(function(i, el) {
+      return $(el).index() === 0
+    })
     .find('> a')
 };
 
@@ -201,28 +208,98 @@ function linkList($title) {
 function linksToImages($links) {
   return $links.map(function() {
 
-    var resolution = $(this).text();
-    var size       = resolution.split(String.fromCharCode(215));
+    var resolution = $(this).text().split(String.fromCharCode(215)).join('x');
+    var size       = resolution.split('x');
+    var href       = $(this).prop('href');
 
     return {
-        resolution:  resolution
+        hasCalendar: hasCalendar(href)
+      , resolution:  resolution
       , width:       size[0]
       , height:      size[1]
       , aspectRatio: aspectRatio(size[0], size[1])
-      , href:        $(this).prop('href')
+      , href:        href
     }
 
   });
 }
 
-request(urlSmashing, function (error, response, body) {
-  if (!error && response.statusCode == 200) {
-    $ = cheerio.load(body);
+function hasCalendar(imageHref) {
+  return imageHref.indexOf('/cal/') > -1;
+};
 
-    var $titles = titles();
-    var $links  = linkList($titles.first());
-    var images  = linksToImages($links);
+function byCalendar(image) {
+  switch (smws.calendar) {
+    case 'both':
+      return true;
+    case 'yes':
+      return image.hasCalendar;
+    case 'no':
+      return !image.hasCalendar;
+   }
+};
 
-    images.map(console.log);
-  }
-});
+function byResolution(image) {
+  return smws.resolution === image.resolution;
+};
+
+function byIsEmpty(wallpaper) {
+  return R.isEmpty(wallpaper[1]);
+}
+
+function main(){
+  request(urlSmashing, function (error, response, body) {
+    if (!error && response.statusCode == 200) {
+      $ = cheerio.load(body);
+
+      var $titles = titles();
+      var $wallpapersLinks = $titles.map(function(i, title) {
+        return wallpaperLinks($(title))
+      });
+      var $wallpapersImages = $wallpapersLinks.map(function(i, wallpaperLinks) {
+        return linksToImages($(wallpaperLinks));
+      });
+
+      /*
+       * cheerio not implement .makeArray jquery function
+       * so i have to convert the jquery array-like object
+       * to a standar js array manually.
+       */
+      var wallpapersImages = [];
+      $wallpapersImages.each(function(i, el) {
+        wallpapersImages.push($(el).toArray())
+      });
+
+      var filterImages = R.compose(R.filter(byResolution), R.filter(byCalendar));
+      var wallpapersImagesFiltered = R.map(filterImages, wallpapersImages);
+
+      var wallpaperTitles = $wallpapersLinks.map(function(i, wallpaperLinks) {
+        var $firstLink = $(wallpaperLinks).first();
+        return url
+          .parse($firstLink.prop('href'))
+          .pathname
+          .split('/')[3]
+      }).toArray();
+
+      var wallpapers = R.zip(wallpaperTitles, wallpapersImagesFiltered);
+          wallpapers = R.partition(byIsEmpty, wallpapers);
+
+      var wallpapersNotFound = wallpapers[0];
+      var wallpapersFound    = wallpapers[1];
+
+      console.log('the following wallpapers has been found with resolution %s\n', smws.resolution);
+      console.log(
+        R.map(function(wallpaper) { return wallpaper[0] }, wallpapersFound)
+      );
+
+      console.log('the following wallpapers has been not found with resolution %s\n', smws.resolution);
+      console.log(
+        R.map(function(wallpaper) { return wallpaper[0] }, wallpapersNotFound)
+      );
+
+
+    }
+  });
+};
+
+main();
