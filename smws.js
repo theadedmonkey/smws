@@ -48,6 +48,7 @@ smws
   .option('-m, --month <n>', 'Add month', parseInt)
   .option('-r, --resolution <n>', 'Add resolution')
   .option('-c, --calendar <n>', 'With calendar')
+  .option('-a, --aspectRatio <n>', 'With aspect ratio')
   .parse(process.argv);
 
 var monthNames = [
@@ -99,19 +100,6 @@ function aspectRatio(w, h) {
 
 }
 
-/*
- * rename to compareByWith
- */
-function sortByWidth(a, b) {
-  if ( a.width < b.width ) {
-    return -1;
-  }
-  if ( a.width > b.width ) {
-    return 1;
-  }
-  return 0;
-};
-
 function download(uri, filename, cb) {
   request(uri)
     .pipe(fs.createWriteStream(filename))
@@ -152,8 +140,8 @@ var urlSmashing = url.resolve(
 /*
  * returns a jquery list with all wallpaper titles.
  */
-function titles() {
-  return $('body')
+function fetchHeadings($body) {
+  return $body
     .find('h3')
     .filter(function(i, el) {
       return $(el)
@@ -167,71 +155,66 @@ function titles() {
 };
 
 /*
-function byCalendar(i, el) {
-  var calendarText = $(el).text();
-
-  var hasCalendar    = calendarText.indexOf('with calendar') > -1;
-  var notHasCalendar = calendarText.indexOf('without calendar') > -1;
-
-  switch (smws.calendar) {
-    case 'both':
-      return hasCalendar || notHasCalendar;
-    case 'yes':
-      return hasCalendar;
-    case 'no':
-      return notHasCalendar;
-   }
-}
-*/
-
-/*
  * returns a jquery list of links for a given wallpaper title.
  */
-function wallpaperLinks($title) {
-  return $title
-    .nextAll('ul')
-    .first()
-    .find('li')
-    /*
-     * each wallpaper has three li, the first one contains a link
-     * with the wallpaper preview, so it is skipped.
-     */
-    .not(function(i, el) {
-      return $(el).index() === 0
-    })
-    .find('> a')
+function fetchLinks($headings) {
+  return $headings.map(function(i, heading) {
+    return $(heading)
+      .nextAll('ul')
+      .first()
+      .find('li')
+      /*
+       * each wallpaper has three li, the first one contains a link
+       * with the wallpaper preview, so it is skipped.
+       */
+      .not(function(i, el) {
+        return $(el).index() === 0
+      })
+      .find('> a')
+  });
 };
+
+function getTitles($links) {
+  return $links.map(function(i, el) {
+    var $firstLink = $(el).first();
+    return url
+      .parse($firstLink.prop('href'))
+      .pathname
+      .split('/')[3]
+  }).toArray();
+}
 
 /*
  * maps a jquery list of links to a list of image objects.
  */
-function linksToImages($links) {
-  return $links.map(function() {
+function getImages($links) {
+  return $links.toArray().map(function(el) {
+    return $(el).toArray().map(function(el) {
+      var resolution = $(el).text().split(String.fromCharCode(215)).join('x');
+      var size       = resolution.split('x');
+      var width      = parseInt(size[0]);
+      var height     = parseInt(size[1]);
+      var href       = $(el).prop('href');
 
-    var resolution = $(this).text().split(String.fromCharCode(215)).join('x');
-    var size       = resolution.split('x');
-    var href       = $(this).prop('href');
-
-    return {
-        hasCalendar: hasCalendar(href)
-      , resolution:  resolution
-      , width:       size[0]
-      , height:      size[1]
-      , aspectRatio: aspectRatio(size[0], size[1])
-      , href:        href
-    }
-
-  });
+      return {
+          hasCalendar: hasCalendar(href)
+        , resolution:  resolution
+        , width:       width
+        , height:      height
+        , aspectRatio: aspectRatio(width, height)
+        , href:        href
+      }
+    })
+  })
 }
 
 function hasCalendar(imageHref) {
   return imageHref.indexOf('/cal/') > -1;
 };
 
+
 function byCalendar(image) {
   switch (smws.calendar) {
-    case 'both':
-      return true;
     case 'yes':
       return image.hasCalendar;
     case 'no':
@@ -243,61 +226,84 @@ function byResolution(image) {
   return smws.resolution === image.resolution;
 };
 
-function byIsEmpty(wallpaper) {
-  return R.isEmpty(wallpaper[1]);
+function byAspectRatio(image) {
+  return smws.aspectRatio === image.aspectRatio;
 }
+
+function byIsUndefined(wallpaper) {
+  return wallpaper[1] === undefined;
+}
+
+function compareByWidth(a, b) {
+  if ( a.width < b.width ) {
+    return -1;
+  }
+  if ( a.width > b.width ) {
+    return 1;
+  }
+  return 0;
+};
+
+function getFilepath(wallpaper) {
+  var wallpaperTitle = wallpaper[0];
+  var wallpaperImage = wallpaper[1];
+
+  var date     = [smws.year, zFill(smws.month, 2)].join('-');
+  var calendar = wallpaperImage.hasCalendar ? 'calendar': 'no-calendar';
+
+  var wallpaperFilepath = [date, calendar, wallpaperTitle].join('-');
+
+  var filepath = path.join(__dirname, 'wallpapers', wallpaperFilepath + '.jpg');
+  return filepath;
+};
+
+function downloadWallpapers(wallpapers) {
+  wallpapers.map(function(wallpaper) {
+    var filepath = getFilepath(wallpaper);
+
+    fs.exists(filepath, function(exists) {
+      if ( exists ) {
+        console.log(wallpaper[0] + ' exists\n')
+      }
+      else {
+        request(wallpaper[1].href)
+          .pipe(fs.createWriteStream(filepath))
+          .on('close', function() {
+            console.log(wallpaper[0], 'done\n')
+          })
+      }
+    })
+
+  });
+};
+
 
 function main(){
   request(urlSmashing, function (error, response, body) {
     if (!error && response.statusCode == 200) {
       $ = cheerio.load(body);
+      var $body = $('body');
 
-      var $titles = titles();
-      var $wallpapersLinks = $titles.map(function(i, title) {
-        return wallpaperLinks($(title))
-      });
-      var $wallpapersImages = $wallpapersLinks.map(function(i, wallpaperLinks) {
-        return linksToImages($(wallpaperLinks));
-      });
+      var $headings = fetchHeadings($body);
+      var $links = fetchLinks($headings);
+      var titles = getTitles($links);
+      var images = getImages($links);
 
-      /*
-       * cheerio not implement .makeArray jquery function
-       * so i have to convert the jquery array-like object
-       * to a standar js array manually.
-       */
-      var wallpapersImages = [];
-      $wallpapersImages.each(function(i, el) {
-        wallpapersImages.push($(el).toArray())
-      });
-
-      var filterImages = R.compose(R.filter(byResolution), R.filter(byCalendar));
-      var wallpapersImagesFiltered = R.map(filterImages, wallpapersImages);
-
-      var wallpaperTitles = $wallpapersLinks.map(function(i, wallpaperLinks) {
-        var $firstLink = $(wallpaperLinks).first();
-        return url
-          .parse($firstLink.prop('href'))
-          .pathname
-          .split('/')[3]
-      }).toArray();
-
-      var wallpapers = R.zip(wallpaperTitles, wallpapersImagesFiltered);
-          wallpapers = R.partition(byIsEmpty, wallpapers);
-
-      var wallpapersNotFound = wallpapers[0];
-      var wallpapersFound    = wallpapers[1];
-
-      console.log('the following wallpapers has been found with resolution %s\n', smws.resolution);
-      console.log(
-        R.map(function(wallpaper) { return wallpaper[0] }, wallpapersFound)
+      var imagesFilter = R.compose(
+          R.head
+        , R.reverse
+        , R.sort(compareByWidth)
+        , R.filter(byAspectRatio)
+        , R.filter(byCalendar)
       );
+      var imagesFiltered  = R.map(imagesFilter, images);
+      var wallpapers      = R.zip(titles, imagesFiltered);
+          wallpapers      = R.partition(byIsUndefined, wallpapers);
 
-      console.log('the following wallpapers has been not found with resolution %s\n', smws.resolution);
-      console.log(
-        R.map(function(wallpaper) { return wallpaper[0] }, wallpapersNotFound)
-      );
+      var wallpaperNotFound = wallpapers[0];
+      var wallpapersFound   = wallpapers[1];
 
-
+      downloadWallpapers(wallpapersFound);
     }
   });
 };
