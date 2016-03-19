@@ -39,7 +39,7 @@ var url = require('url');
  * find out how to make a global smws command
  * by default the app should download the wallpapers of the last month.
  * can be a nice idea to have and .smws file to store all the config with
- * things like the dir.
+ * things like the dir, the aspect ratio, resolution, with without calendar...
  */
 
 smws
@@ -188,7 +188,7 @@ function getTitles($links) {
  * maps a jquery list of links to a list of image objects.
  */
 function getImages($links) {
-  return $links.toArray().map(function(el) {
+  var images = $links.toArray().map(function(el) {
     return $(el).toArray().map(function(el) {
       var resolution = $(el).text().split(String.fromCharCode(215)).join('x');
       var size       = resolution.split('x');
@@ -206,20 +206,27 @@ function getImages($links) {
       }
     })
   })
+
+  return R.map(R.partition(byCalendar), images);
 }
 
 function hasCalendar(imageHref) {
   return imageHref.indexOf('/cal/') > -1;
 };
 
-
 function byCalendar(image) {
+  return image.hasCalendar;
+};
+
+function byCalendarOption(image) {
   switch (smws.calendar) {
+    case 'both':
+      return true;
     case 'yes':
       return image.hasCalendar;
     case 'no':
-      return !image.hasCalendar;
-   }
+      return R.not(image.hasCalendar);
+  }
 };
 
 function byResolution(image) {
@@ -231,7 +238,7 @@ function byAspectRatio(image) {
 }
 
 function byIsUndefined(wallpaper) {
-  return wallpaper[1] === undefined;
+  return R.all(function(image) { return image === undefined }, wallpaper[1]);
 }
 
 function compareByWidth(a, b) {
@@ -244,35 +251,42 @@ function compareByWidth(a, b) {
   return 0;
 };
 
-function getFilepath(wallpaper) {
+
+function getFilepathsAndUrls(wallpaper) {
   var wallpaperTitle = wallpaper[0];
-  var wallpaperImage = wallpaper[1];
+  var wallpaperImages = wallpaper[1];
 
-  var date     = [smws.year, zFill(smws.month, 2)].join('-');
-  var calendar = wallpaperImage.hasCalendar ? 'calendar': 'no-calendar';
+  var filepathsAndUrls = R.map(function(wallpaperImage) {
+    var date = [smws.year, zFill(smws.month, 2)].join('-');
+    var calendar = wallpaperImage.hasCalendar ? 'calendar': 'no-calendar';
+    var wallpaperFilepath = [date, calendar, wallpaperTitle].join('-');
+    return [path.join(__dirname, 'wallpapers', wallpaperFilepath + '.jpg'), wallpaperImage.href]
+  }, wallpaperImages)
 
-  var wallpaperFilepath = [date, calendar, wallpaperTitle].join('-');
-
-  var filepath = path.join(__dirname, 'wallpapers', wallpaperFilepath + '.jpg');
-  return filepath;
+  return filepathsAndUrls;
 };
 
 function downloadWallpapers(wallpapers) {
   wallpapers.map(function(wallpaper) {
-    var filepath = getFilepath(wallpaper);
 
-    fs.exists(filepath, function(exists) {
-      if ( exists ) {
-        console.log(wallpaper[0] + ' exists\n')
-      }
-      else {
-        request(wallpaper[1].href)
-          .pipe(fs.createWriteStream(filepath))
-          .on('close', function() {
-            console.log(wallpaper[0], 'done\n')
-          })
-      }
-    })
+    var filepathsAndUrls = getFilepathsAndUrls(wallpaper);
+
+    R.map(function(filepathAndUrl) {
+      var filepath = filepathAndUrl[0];
+      var url      = filepathAndUrl[1];
+      fs.exists(filepath, function(exists) {
+        if ( exists ) {
+          console.log(wallpaper[0] + ' exists\n')
+        }
+        else {
+          request(url)
+            .pipe(fs.createWriteStream(filepath))
+            .on('close', function() {
+              console.log(wallpaper[0], 'done\n')
+            })
+        }
+      })
+    }, filepathsAndUrls)
 
   });
 };
@@ -294,15 +308,16 @@ function main(){
         , R.reverse
         , R.sort(compareByWidth)
         , R.filter(byAspectRatio)
-        , R.filter(byCalendar)
       );
-      var imagesFiltered  = R.map(imagesFilter, images);
+      var imagesFiltered  = R.map(R.map(imagesFilter), images);
+
       var wallpapers      = R.zip(titles, imagesFiltered);
           wallpapers      = R.partition(byIsUndefined, wallpapers);
 
-      var wallpaperNotFound = wallpapers[0];
-      var wallpapersFound   = wallpapers[1];
-
+      var wallpapersNotFound = wallpapers[0];
+      var wallpapersFound    = wallpapers[1];
+          wallpapersFound    = R.map(R.adjust(R.filter(byCalendarOption), 1), wallpapersFound);
+        
       downloadWallpapers(wallpapersFound);
     }
   });
