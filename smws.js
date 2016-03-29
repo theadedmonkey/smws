@@ -29,15 +29,8 @@ var url = require('url');
  * enable multiple years
  * enable whole years
  * enable multiple resolutions
- * work out the aspect ratio of the resolution
- * if an entered resolution not exists for a given wallpaper
- * try to find other resolutions with the same aspect ratio.
- * add a command line option to choose where to store the wallpapers
- * save wallpapers in a flat dir with a filename format to be determined
- * enable the option of with calendar or without or both
  * try to find the resolution of the user machine in order to set is as default resolution
  * find out how to make a global smws command
- * by default the app should download the wallpapers of the last month.
  * can be a nice idea to have and .smws file to store all the config with
  * things like the dir, the aspect ratio, resolution, with without calendar...
  */
@@ -49,6 +42,7 @@ smws
   .option('-r, --resolution <n>', 'Add resolution')
   .option('-c, --calendar <n>', 'With calendar')
   .option('-a, --aspectRatio <n>', 'With aspect ratio')
+  .option('-d, --dir <n>', 'With directory')
   .parse(process.argv);
 
 // ISO date format: 2016-03-29T13:25:16.320Z
@@ -58,6 +52,9 @@ var currentMonth = currentDate[1];
 
 smws.year  = smws.year || parseInt(currentYear);
 smws.month = smws.month || parseInt(currentMonth);
+
+// user dir like /home/theadedmonkey
+smws.dir = smws.dir || path.join(process.env['HOME'], 'Pictures', 'smws');
 
 var monthNames = [
     'january'
@@ -268,7 +265,7 @@ function getFilepathsAndUrls(wallpaper) {
     var date = [smws.year, zFill(smws.month, 2)].join('-');
     var calendar = wallpaperImage.hasCalendar ? 'calendar': 'no-calendar';
     var wallpaperFilepath = [date, calendar, wallpaperTitle].join('-');
-    return [path.join(__dirname, 'wallpapers', wallpaperFilepath + '.jpg'), wallpaperImage.href]
+    return [path.join(smws.dir, wallpaperFilepath + '.jpg'), wallpaperImage.href]
   }, wallpaperImages)
 
   return filepathsAndUrls;
@@ -298,7 +295,6 @@ function downloadWallpapers(wallpapers) {
 
   });
 };
-
 
 function main(){
   request(urlSmashing, function (error, response, body) {
