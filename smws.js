@@ -51,6 +51,14 @@ smws
   .option('-a, --aspectRatio <n>', 'With aspect ratio')
   .parse(process.argv);
 
+// ISO date format: 2016-03-29T13:25:16.320Z
+var currentDate  = new Date().toISOString().split('T')[0].split('-');
+var currentYear  = currentDate[0];
+var currentMonth = currentDate[1];
+
+smws.year  = smws.year || parseInt(currentYear);
+smws.month = smws.month || parseInt(currentMonth);
+
 var monthNames = [
     'january'
   , 'february'
@@ -317,7 +325,7 @@ function main(){
       var wallpapersNotFound = wallpapers[0];
       var wallpapersFound    = wallpapers[1];
           wallpapersFound    = R.map(R.adjust(R.filter(byCalendarOption), 1), wallpapersFound);
-        
+
       downloadWallpapers(wallpapersFound);
     }
   });
